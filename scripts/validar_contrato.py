@@ -1,12 +1,15 @@
 """Valida os schemas do contrato e os exemplos.
 
 Regra dos nomes: o prefixo do arquivo de exemplo (antes do primeiro ponto)
-diz qual schema usar. Ex.: lote-vagas.linkedin.json -> lote-vagas.schema.json
+diz qual schema usar. Ex.: mensagem-vaga.linkedin.json -> mensagem-vaga.schema.json
 
 - exemplos/validos/   -> TODOS precisam passar
 - exemplos/invalidos/ -> TODOS precisam falhar
 
-Uso (na raiz do repositório):
+Uso (na raiz do repositório), só com Docker:
+    docker run --rm -v "${PWD}:/app" -w /app python:3.12-slim sh -c "pip install -q 'jsonschema[format-nongpl]' && python scripts/validar_contrato.py"
+
+Ou com uv:
     uv run --with "jsonschema[format-nongpl]" python scripts/validar_contrato.py
 """
 
@@ -64,7 +67,8 @@ def main() -> int:
             passou = not erros
 
             if passou == deve_passar:
-                detalhe = "" if passou else f" -> {erros[0].message}"
+                msg = erros[0].message if erros else ""
+                detalhe = "" if passou else f" -> {msg[:100]}{'...' if len(msg) > 100 else ''}"
                 print(f"[ok]   {pasta}/{arquivo.name}{detalhe}")
             else:
                 falhas += 1

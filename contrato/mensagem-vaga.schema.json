@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vagas-bot.local/contrato/mensagem-vaga.schema.json",
+  "title": "Mensagem 'vaga coletada'",
+  "description": "Corpo de cada mensagem publicada na exchange 'vagas.coletadas' (RabbitMQ). Uma mensagem = uma vaga.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["versaoContrato", "idMensagem", "enviadaEm", "vaga"],
+  "properties": {
+    "versaoContrato": {
+      "description": "Versão do contrato usada por quem publicou. O núcleo manda para a DLQ mensagens com MAJOR maior que o dele.",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "idMensagem": {
+      "description": "UUID gerado pelo publicador. Também vai na propriedade AMQP message_id. Serve para rastrear a mensagem nos logs e na DLQ.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "enviadaEm": {
+      "description": "Momento da publicação, com fuso (ISO 8601).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "vaga": { "$ref": "vaga.schema.json" }
+  }
+}

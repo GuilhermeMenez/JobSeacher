@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancela execuções antigas do mesmo branch/PR quando chega um push novo
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Sempre roda: segurança do repositório, contrato e docker-compose
+  # ---------------------------------------------------------------------------
+  verificacoes:
+    name: Repositório e contrato
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      java: ${{ steps.detectar.outputs.java }}
+      python: ${{ steps.detectar.outputs.python }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Nenhum .env versionado
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$'; then
+            echo "::error::Arquivo .env foi commitado. Remova com 'git rm --cached' e troque as senhas/chaves."
+            exit 1
+          fi
+          echo "OK: nenhum .env no repositório."
+
+      - name: Detectar subprojetos
+        id: detectar
+        run: |
+          [ -f core-java/pom.xml ] && java=true || java=false
+          [ -f scraper-python/pyproject.toml ] && python=true || python=false
+          echo "java=$java" >> "$GITHUB_OUTPUT"
+          echo "python=$python" >> "$GITHUB_OUTPUT"
+          echo "core-java: $java | scraper-python: $python"
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Validar contrato JSON
+        run: uv run --with "jsonschema[format-nongpl]" python scripts/validar_contrato.py
+
+      - name: Validar docker-compose.yml
+        env:
+          POSTGRES_PASSWORD: ci-somente-validacao
+          RABBITMQ_PASSWORD: ci-somente-validacao
+        run: docker compose config --quiet
+
+  # ---------------------------------------------------------------------------
+  # Sobe PostgreSQL + RabbitMQ do compose e espera ficarem healthy
+  # ---------------------------------------------------------------------------
+  infraestrutura:
+    name: PostgreSQL + RabbitMQ (docker compose)
+    needs: verificacoes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      POSTGRES_PASSWORD: ci-somente-teste
+      RABBITMQ_PASSWORD: ci-somente-teste
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Subir e aguardar healthcheck
+        run: docker compose up -d --wait --wait-timeout 120
+
+      - name: Testar PostgreSQL
+        run: docker compose exec -T postgres psql -U vagas -d vagas -c "select version();"
+
+      - name: Testar RabbitMQ (login com o usuário do .env)
+        run: |
+          docker compose exec -T rabbitmq rabbitmq-diagnostics -q status > /dev/null
+          docker compose exec -T rabbitmq rabbitmqctl authenticate_user vagas "$RABBITMQ_PASSWORD"
+
+      - name: Logs em caso de falha
+        if: failure()
+        run: docker compose logs
+
+      - name: Derrubar
+        if: always()
+        run: docker compose down -v
+
+  # ---------------------------------------------------------------------------
+  # Núcleo Java — só roda quando core-java/pom.xml existir (etapa 2)
+  # ---------------------------------------------------------------------------
+  java:
+    name: core-java (build + testes)
+    needs: verificacoes
+    if: needs.verificacoes.outputs.java == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: core-java
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: core-java/pom.xml
+
+      # 'verify' compila, roda testes unitários e de integração (Testcontainers usa o Docker do runner)
+      - name: Build e testes
+        run: |
+          if [ -f mvnw ]; then
+            chmod +x mvnw
+            ./mvnw -B -ntp verify
+          else
+            mvn -B -ntp verify
+          fi
+
+      - name: Relatórios de teste em caso de falha
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relatorios-teste-java
+          path: |
+            core-java/target/surefire-reports/
+            core-java/target/failsafe-reports/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Scraper Python — só roda quando scraper-python/pyproject.toml existir (etapa 7)
+  # ---------------------------------------------------------------------------
+  python:
+    name: scraper-python (lint + testes)
+    needs: verificacoes
+    if: needs.verificacoes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: scraper-python
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: scraper-python/uv.lock
+
+      - name: Instalar dependências
+        run: |
+          if [ -f uv.lock ]; then uv sync --locked; else uv sync; fi
+
+      - name: Lint (ruff)
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Testes (pytest)
+        run: uv run pytest

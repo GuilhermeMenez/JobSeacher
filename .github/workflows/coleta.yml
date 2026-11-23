@@ -1,0 +1,139 @@
+name: Coleta diária de vagas
+
+on:
+  schedule:
+    # Horário em UTC. 10:47 UTC = 07:47 em Brasília (UTC-3).
+    # Minuto "quebrado" de propósito: execuções em :00 costumam atrasar no GitHub.
+    - cron: "47 10 * * *"
+  workflow_dispatch: # botão "Run workflow" na aba Actions
+
+# Nunca duas coletas ao mesmo tempo; a segunda espera a primeira terminar
+concurrency:
+  group: coleta-vagas
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  coletar:
+    name: Coletar, filtrar e notificar
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Banco temporário do job. É descartado no fim, por isso o estado
+    # (vagas já vistas/notificadas) é salvo em cache entre as execuções.
+    # Se o secret SPRING_DATASOURCE_URL existir, usa esse banco externo e ignora este.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: vagas
+          POSTGRES_USER: vagas
+          POSTGRES_PASSWORD: coleta-ci
+          TZ: America/Sao_Paulo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vagas -d vagas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DB_EXTERNO_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+      ESTADO: .estado/vagas.dump
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verificar se o núcleo já existe
+        id: detectar
+        run: |
+          if [ -f core-java/pom.xml ]; then
+            echo "pronto=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pronto=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::core-java ainda não existe (etapa 2). Nada para coletar hoje."
+          fi
+
+      # ---------- Restaurar o estado do banco (só quando usa o banco temporário) ----------
+      - name: Restaurar estado da última coleta
+        id: cache
+        if: steps.detectar.outputs.pronto == 'true' && env.DB_EXTERNO_URL == ''
+        uses: actions/cache/restore@v6
+        with:
+          path: .estado
+          key: banco-vagas-${{ github.run_id }}
+          restore-keys: banco-vagas-
+
+      - name: Carregar dump no Postgres
+        if: steps.detectar.outputs.pronto == 'true' && env.DB_EXTERNO_URL == ''
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          if [ -f "$ESTADO" ]; then
+            docker exec -i "$PG_CONTAINER" pg_restore -U vagas -d vagas --clean --if-exists --no-owner < "$ESTADO"
+            echo "Estado restaurado ($(du -h "$ESTADO" | cut -f1))."
+          else
+            echo "::warning::Primeira coleta (ou cache expirado): começando com banco vazio. Todas as vagas encontradas serão tratadas como novas."
+          fi
+
+      # ---------- Build e execução ----------
+      - uses: actions/setup-java@v6
+        if: steps.detectar.outputs.pronto == 'true'
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: core-java/pom.xml
+
+      # Testes já rodam no CI; aqui só empacota
+      - name: Empacotar núcleo
+        if: steps.detectar.outputs.pronto == 'true'
+        working-directory: core-java
+        run: |
+          if [ -f mvnw ]; then chmod +x mvnw; ./mvnw -B -ntp -DskipTests package; else mvn -B -ntp -DskipTests package; fi
+
+      - name: Executar coleta
+        if: steps.detectar.outputs.pronto == 'true'
+        env:
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL || 'jdbc:postgresql://localhost:5432/vagas' }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME || 'vagas' }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD || 'coleta-ci' }}
+          # Fontes (as que não tiverem chave são puladas pelo núcleo)
+          GITHUB_TOKEN: ${{ secrets.VAGAS_GITHUB_TOKEN || github.token }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          CAREERJET_API_KEY: ${{ secrets.CAREERJET_API_KEY }}
+          # Notificação
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          JAR=$(find core-java/target -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' | head -n 1)
+          if [ -z "$JAR" ]; then echo "::error::JAR não encontrado em core-java/target"; exit 1; fi
+          # Aqui só rodam as fontes via API (chamada direta, sem fila).
+          # O consumer do RabbitMQ fica desligado: não há RabbitMQ no Actions nem scraper publicando.
+          java -jar "$JAR" \
+            --spring.main.web-application-type=none \
+            --spring.rabbitmq.listener.simple.auto-startup=false \
+            --vagas.execucao=unica
+
+      # ---------- Salvar o estado para a próxima coleta ----------
+      # Roda mesmo se a coleta falhar no meio: o que já foi salvo/notificado não se repete amanhã
+      - name: Gerar dump do banco
+        id: dump
+        if: always() && steps.detectar.outputs.pronto == 'true' && env.DB_EXTERNO_URL == ''
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          mkdir -p .estado
+          docker exec "$PG_CONTAINER" pg_dump -U vagas -d vagas -Fc > "$ESTADO"
+          echo "Dump gerado ($(du -h "$ESTADO" | cut -f1))."
+
+      - name: Salvar estado em cache
+        if: always() && steps.dump.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: .estado
+          key: banco-vagas-${{ github.run_id }}

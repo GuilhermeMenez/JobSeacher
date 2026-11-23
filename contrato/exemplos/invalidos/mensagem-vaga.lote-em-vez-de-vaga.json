@@ -1,7 +1,8 @@
 {
   "versaoContrato": "1.0",
-  "fonte": "linkedin",
-  "vagas": [
+  "idMensagem": "6f1c2b0e-8a4d-4c1e-9b7a-2d5e3f4a1b90",
+  "enviadaEm": "2026-11-22T21:00:06-03:00",
+  "vaga": [
     {
       "fonte": "linkedin",
       "idExterno": "4012345678",
@@ -17,18 +18,6 @@
       "salarioInformado": null,
       "tags": [],
       "coletadaEm": "2026-11-22T21:00:00-03:00"
-    },
-    {
-      "fonte": "linkedin",
-      "idExterno": "4012349999",
-      "titulo": "Estágio em Desenvolvimento Back-end",
-      "empresa": null,
-      "local": "Brasil",
-      "modalidade": "remoto",
-      "url": "https://www.linkedin.com/jobs/view/4012349999",
-      "publicadaEm": null,
-      "descricao": null,
-      "coletadaEm": "2026-11-22T21:00:05-03:00"
     }
   ]
 }

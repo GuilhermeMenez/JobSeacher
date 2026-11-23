@@ -1,0 +1,21 @@
+{
+  "versaoContrato": "1.0",
+  "idMensagem": "c3e4a5b6-7d8e-4f90-8a1b-2c3d4e5f6a7b",
+  "enviadaEm": "2026-11-22T21:10:02-03:00",
+  "vaga": {
+    "fonte": "catho",
+    "idExterno": "cth-334455",
+    "titulo": "Programador Java Júnior",
+    "empresa": "Empresa Exemplo",
+    "local": "Campinas, SP",
+    "modalidade": "presencial",
+    "url": "https://www.catho.com.br/vagas/programador-java-junior/334455/",
+    "publicadaEm": "2026-11-20",
+    "descricao": "Requisitos: Java 17+, Spring Boot, SQL. Diferencial: Docker.",
+    "nivelInformado": "Júnior/Trainee",
+    "contratacaoInformada": "CLT",
+    "salarioInformado": "R$ 3.500 - R$ 4.500",
+    "tags": ["Java", "Spring", "SQL"],
+    "coletadaEm": "2026-11-22T21:10:00-03:00"
+  }
+}

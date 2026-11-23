@@ -32,3 +32,6 @@ Desktop.ini
 data/
 *.log
 *.csv
+
+# Estado da coleta no GitHub Actions (dump do banco)
+.estado/
