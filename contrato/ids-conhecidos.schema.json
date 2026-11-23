@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vagas-bot.local/contrato/ids-conhecidos.schema.json",
+  "title": "IDs já conhecidos de uma fonte",
+  "description": "Resposta do GET /api/vagas/ids?fonte={fonte}&desde={data}. O scraper usa para não baixar de novo o detalhe de vagas que o núcleo já tem.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fonte", "ids"],
+  "properties": {
+    "fonte": { "$ref": "vaga.schema.json#/properties/fonte" },
+    "ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

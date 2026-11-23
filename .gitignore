@@ -1,0 +1,34 @@
+# Segredos — nunca versionar
+.env
+*.env.local
+
+# Java / Maven
+core-java/target/
+*.class
+*.jar
+!**/.mvn/wrapper/maven-wrapper.jar
+hs_err_pid*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+!.vscode/extensions.json
+
+# Sistema operacional
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Dados locais e saídas
+data/
+*.log
+*.csv

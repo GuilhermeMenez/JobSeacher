@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vagas-bot.local/contrato/vaga.schema.json",
+  "title": "Vaga coletada",
+  "description": "Uma vaga como veio da fonte, sem filtro nem score. Quem coleta (Java ou Python) só normaliza os campos; as regras de negócio ficam no núcleo Java.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fonte",
+    "idExterno",
+    "titulo",
+    "empresa",
+    "local",
+    "modalidade",
+    "url",
+    "publicadaEm",
+    "descricao",
+    "coletadaEm"
+  ],
+  "properties": {
+    "fonte": {
+      "description": "De onde a vaga veio. Nova fonte = nova versão do contrato.",
+      "type": "string",
+      "enum": [
+        "github",
+        "gupy",
+        "adzuna",
+        "careerjet",
+        "greenhouse",
+        "lever",
+        "linkedin",
+        "catho",
+        "infojobs",
+        "vagascom"
+      ]
+    },
+    "idExterno": {
+      "description": "ID da vaga na fonte. Junto com 'fonte' forma a chave única.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^\\S+$"
+    },
+    "titulo": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "empresa": {
+      "description": "null quando a fonte não informa ou a vaga é confidencial.",
+      "type": ["string", "null"],
+      "maxLength": 300
+    },
+    "local": {
+      "description": "Texto livre como veio da fonte, ex.: 'São Paulo, SP' ou 'Brasil'.",
+      "type": ["string", "null"],
+      "maxLength": 300
+    },
+    "modalidade": {
+      "type": "string",
+      "enum": ["remoto", "hibrido", "presencial", "desconhecida"]
+    },
+    "url": {
+      "description": "Link para ver/se candidatar à vaga.",
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://",
+      "maxLength": 2000
+    },
+    "publicadaEm": {
+      "description": "Data de publicação (sem hora). null se a fonte não informa.",
+      "type": ["string", "null"],
+      "format": "date"
+    },
+    "descricao": {
+      "description": "Texto puro (sem HTML). null se ainda não foi coletada.",
+      "type": ["string", "null"],
+      "maxLength": 100000
+    },
+    "nivelInformado": {
+      "description": "Nível como a fonte rotula (ex.: 'Assistente', 'Júnior/Trainee'). Só informativo; o filtro de júnior é do núcleo.",
+      "type": ["string", "null"],
+      "maxLength": 100
+    },
+    "contratacaoInformada": {
+      "description": "Tipo de contratação como a fonte rotula (ex.: 'CLT', 'PJ', 'Estágio').",
+      "type": ["string", "null"],
+      "maxLength": 100
+    },
+    "salarioInformado": {
+      "description": "Faixa salarial como veio da fonte, em texto (ex.: 'R$ 3.000 - R$ 4.000').",
+      "type": ["string", "null"],
+      "maxLength": 200
+    },
+    "tags": {
+      "description": "Labels/skills que a fonte fornece (ex.: labels das issues do GitHub).",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 100 },
+      "maxItems": 50,
+      "uniqueItems": true
+    },
+    "coletadaEm": {
+      "description": "Momento da coleta, com fuso (ISO 8601).",
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

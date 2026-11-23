@@ -1,0 +1,11 @@
+{
+  "recebidas": 25,
+  "novas": 8,
+  "atualizadas": 1,
+  "duplicadas": 14,
+  "rejeitadas": 2,
+  "erros": [
+    { "indice": 3, "idExterno": "4012300001", "motivo": "url: não começa com http(s)://" },
+    { "indice": 17, "idExterno": null, "motivo": "idExterno: obrigatório" }
+  ]
+}

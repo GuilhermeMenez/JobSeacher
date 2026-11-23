@@ -1,0 +1,17 @@
+{
+  "versaoContrato": "1.0",
+  "fonte": "gupy",
+  "vagas": [
+    {
+      "fonte": "gupy",
+      "idExterno": "9876543",
+      "empresa": "Empresa Exemplo",
+      "local": "Curitiba, PR",
+      "modalidade": "presencial",
+      "url": "https://exemplo.gupy.io/job/9876543",
+      "publicadaEm": "2026-11-19",
+      "descricao": "Vaga sem o campo titulo.",
+      "coletadaEm": "2026-11-22T21:00:00-03:00"
+    }
+  ]
+}

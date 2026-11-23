@@ -1,0 +1,19 @@
+{
+  "versaoContrato": "1.0",
+  "fonte": "linkedin",
+  "vagas": [
+    {
+      "fonte": "linkedin",
+      "idExterno": "4012345678",
+      "titulo": "Desenvolvedor Java Júnior",
+      "empresa": "Empresa Exemplo",
+      "local": "São Paulo, SP",
+      "modalidade": "hibrido",
+      "url": "https://www.linkedin.com/jobs/view/4012345678",
+      "publicadaEm": "2026-11-21",
+      "descricao": null,
+      "coletadaEm": "2026-11-22T21:00:00-03:00",
+      "score": 5
+    }
+  ]
+}

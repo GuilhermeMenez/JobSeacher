@@ -1,0 +1,18 @@
+{
+  "versaoContrato": "1.0",
+  "fonte": "adzuna",
+  "vagas": [
+    {
+      "fonte": "adzuna",
+      "idExterno": "5551234",
+      "titulo": "Desenvolvedor Java Jr",
+      "empresa": "Empresa Exemplo",
+      "local": "Belo Horizonte, MG",
+      "modalidade": "home office",
+      "url": "https://www.adzuna.com.br/details/5551234",
+      "publicadaEm": "2026-11-19",
+      "descricao": null,
+      "coletadaEm": "2026-11-22T21:00:00-03:00"
+    }
+  ]
+}
