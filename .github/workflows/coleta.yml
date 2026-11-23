@@ -23,26 +23,27 @@ jobs:
 
     # Banco temporário do job. É descartado no fim, por isso o estado
     # (vagas já vistas/notificadas) é salvo em cache entre as execuções.
-    # Se o secret SPRING_DATASOURCE_URL existir, usa esse banco externo e ignora este.
+    # Se o secret MONGODB_URI existir (ex.: MongoDB Atlas), usa esse banco e ignora este.
     services:
-      postgres:
-        image: postgres:17
+      mongo:
+        image: mongo:8
         env:
-          POSTGRES_DB: vagas
-          POSTGRES_USER: vagas
-          POSTGRES_PASSWORD: coleta-ci
+          MONGO_INITDB_ROOT_USERNAME: vagas
+          MONGO_INITDB_ROOT_PASSWORD: coleta-ci
           TZ: America/Sao_Paulo
         ports:
-          - 5432:5432
+          - 27017:27017
         options: >-
-          --health-cmd "pg_isready -U vagas -d vagas"
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
           --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
+          --health-timeout 5s
+          --health-retries 12
 
     env:
-      DB_EXTERNO_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
-      ESTADO: .estado/vagas.dump
+      DB_EXTERNO_URL: ${{ secrets.MONGODB_URI }}
+      ESTADO: .estado/vagas.archive.gz
+      # Credenciais do Mongo temporário (só existe durante o job)
+      MONGO_AUTH: --username vagas --password coleta-ci --authenticationDatabase admin
 
     steps:
       - uses: actions/checkout@v7
@@ -64,16 +65,18 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .estado
-          key: banco-vagas-${{ github.run_id }}
-          restore-keys: banco-vagas-
+          key: banco-mongo-${{ github.run_id }}
+          restore-keys: banco-mongo-
 
-      - name: Carregar dump no Postgres
+      - name: Carregar backup no MongoDB
         if: steps.detectar.outputs.pronto == 'true' && env.DB_EXTERNO_URL == ''
         env:
-          PG_CONTAINER: ${{ job.services.postgres.id }}
+          MONGO_CONTAINER: ${{ job.services.mongo.id }}
         run: |
           if [ -f "$ESTADO" ]; then
-            docker exec -i "$PG_CONTAINER" pg_restore -U vagas -d vagas --clean --if-exists --no-owner < "$ESTADO"
+            # --drop: substitui as coleções pelo conteúdo do backup
+            # shellcheck disable=SC2086
+            docker exec -i "$MONGO_CONTAINER" mongorestore $MONGO_AUTH --archive --gzip --drop --nsInclude 'vagas.*' < "$ESTADO"
             echo "Estado restaurado ($(du -h "$ESTADO" | cut -f1))."
           else
             echo "::warning::Primeira coleta (ou cache expirado): começando com banco vazio. Todas as vagas encontradas serão tratadas como novas."
@@ -98,9 +101,7 @@ jobs:
       - name: Executar coleta
         if: steps.detectar.outputs.pronto == 'true'
         env:
-          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL || 'jdbc:postgresql://localhost:5432/vagas' }}
-          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME || 'vagas' }}
-          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD || 'coleta-ci' }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI || 'mongodb://vagas:coleta-ci@localhost:27017/vagas?authSource=admin' }}
           # Fontes (as que não tiverem chave são puladas pelo núcleo)
           GITHUB_TOKEN: ${{ secrets.VAGAS_GITHUB_TOKEN || github.token }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
@@ -121,19 +122,20 @@ jobs:
 
       # ---------- Salvar o estado para a próxima coleta ----------
       # Roda mesmo se a coleta falhar no meio: o que já foi salvo/notificado não se repete amanhã
-      - name: Gerar dump do banco
+      - name: Gerar backup do banco
         id: dump
         if: always() && steps.detectar.outputs.pronto == 'true' && env.DB_EXTERNO_URL == ''
         env:
-          PG_CONTAINER: ${{ job.services.postgres.id }}
+          MONGO_CONTAINER: ${{ job.services.mongo.id }}
         run: |
           mkdir -p .estado
-          docker exec "$PG_CONTAINER" pg_dump -U vagas -d vagas -Fc > "$ESTADO"
-          echo "Dump gerado ($(du -h "$ESTADO" | cut -f1))."
+          # shellcheck disable=SC2086
+          docker exec "$MONGO_CONTAINER" mongodump $MONGO_AUTH --db vagas --archive --gzip > "$ESTADO"
+          echo "Backup gerado ($(du -h "$ESTADO" | cut -f1))."
 
       - name: Salvar estado em cache
         if: always() && steps.dump.outcome == 'success'
         uses: actions/cache/save@v6
         with:
           path: .estado
-          key: banco-vagas-${{ github.run_id }}
+          key: banco-mongo-${{ github.run_id }}

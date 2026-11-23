@@ -8,9 +8,39 @@ Responsável por:
 - **Consumer do RabbitMQ**: lê a fila `nucleo.ingestao-vagas` (vagas do scraper Python) e chama o mesmo `IngestaoService`
 - Declarar a topologia do RabbitMQ (exchanges, fila, DLQ) — ver `../contrato/README.md`
 - `GET /api/vagas/ids` para o scraper saber o que já foi coletado
-- Filtro júnior, score, deduplicação, PostgreSQL (Flyway) e notificação
+- Filtro júnior, score, deduplicação, MongoDB e notificação
 
-Stack: Java 21/25 · Spring Boot · Maven · Spring AMQP · RestClient · Resilience4j · Spring Data JPA · Flyway · JUnit 5 · AssertJ · WireMock · Testcontainers (PostgreSQL e RabbitMQ).
+Stack: Java 21/25 · Spring Boot 4 · Maven · Spring Data MongoDB · Spring AMQP · RestClient · Resilience4j · JUnit 5 · AssertJ · WireMock · Testcontainers (MongoDB e RabbitMQ).
+
+## Modelo no MongoDB
+
+Banco `vagas`. Uma vaga aparece em várias fontes (LinkedIn e Gupy, por exemplo), então o documento guarda a vaga "canônica" e a lista de onde ela foi vista:
+
+```json
+{
+  "_id": "…",
+  "chaveDedup": "empresa-exemplo|desenvolvedor java junior",
+  "titulo": "Desenvolvedor Java Júnior",
+  "empresa": "Empresa Exemplo",
+  "modalidade": "hibrido",
+  "score": 4,
+  "status": "nova",
+  "notificadaEm": null,
+  "ocorrencias": [
+    { "fonte": "linkedin", "idExterno": "4012345678", "url": "…", "coletadaEm": "…" },
+    { "fonte": "gupy", "idExterno": "9876543", "url": "…", "coletadaEm": "…" }
+  ],
+  "original": { "…": "mensagem como chegou, para reprocessar se o filtro mudar" }
+}
+```
+
+| Índice | Para quê |
+|---|---|
+| único em `ocorrencias.fonte` + `ocorrencias.idExterno` | idempotência: a mesma vaga da mesma fonte nunca entra duas vezes |
+| único em `chaveDedup` | junta a mesma vaga vinda de fontes diferentes |
+| `score` + `coletadaEm` | listar as melhores vagas recentes |
+
+Sem Flyway: os índices são criados pelo núcleo ao subir (código, não `auto-index-creation`). Mudanças de formato dos documentos ficam documentadas aqui e, se um dia precisar migrar dados, usamos um script versionado (ex.: Mongock).
 
 ## Modos de execução
 
@@ -36,7 +66,7 @@ Stack: Java 21/25 · Spring Boot · Maven · Spring AMQP · RestClient · Resili
 
 | Variável | Uso |
 |---|---|
-| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Banco |
+| `MONGODB_URI` | Banco. No `application.yml`: `spring.mongodb.uri: ${MONGODB_URI}` (nome da propriedade no Spring Boot 4) |
 | `SPRING_RABBITMQ_HOST` / `_PORT` / `_USERNAME` / `_PASSWORD` | Fila (só no modo servidor) |
 | `GITHUB_TOKEN` | Fonte GitHub |
 | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Fonte Adzuna |

@@ -14,7 +14,7 @@ Coleta vagas de **desenvolvedor Java júnior** de várias fontes, filtra as que 
 │                   │                          │        └─► nucleo.ingestao-vagas (+ DLQ)
 │   Filtro júnior → Deduplicação → Score       │
 │                   ▼                          │
-│              PostgreSQL ──► Telegram          │
+│               MongoDB ──► Telegram            │
 └──────────────────────────────────────────────┘
 ```
 
@@ -25,7 +25,7 @@ Coleta vagas de **desenvolvedor Java júnior** de várias fontes, filtra as que 
 | Pasta | O que é | Etapa |
 |---|---|---|
 | `contrato/` | Formato das mensagens na fila e topologia do RabbitMQ | 1 ✅ |
-| `docker-compose.yml` | PostgreSQL + RabbitMQ locais | 1 ✅ |
+| `docker-compose.yml` | MongoDB + RabbitMQ locais | 1 ✅ |
 | `core-java/` | Núcleo: APIs, ingestão, filtro, banco, notificação | 2–6 |
 | `scraper-python/` | Scraper dos sites sem API; publica na fila | 7 |
 | `scripts/` | Utilitários (validação do contrato) | 1 ✅ |
@@ -34,7 +34,7 @@ Coleta vagas de **desenvolvedor Java júnior** de várias fontes, filtra as que 
 
 | Ferramenta | Para quê | Instalação (PowerShell) |
 |---|---|---|
-| Docker Desktop | PostgreSQL, RabbitMQ e (nas próximas etapas) núcleo e scraper | já instalado ✅ |
+| Docker Desktop | MongoDB, RabbitMQ e (nas próximas etapas) núcleo e scraper | já instalado ✅ |
 | Git | versionamento | `winget install --id Git.Git -e` |
 
 Só isso para **rodar** o projeto. Para **desenvolver** em Java com autocompletar e depuração, instale também um JDK (`winget install --id EclipseAdoptium.Temurin.21.JDK -e`) ou use um Dev Container no VS Code.
@@ -47,10 +47,10 @@ Todos os comandos no **PowerShell**, dentro da pasta do projeto.
 
 ```powershell
 Copy-Item .env.example .env
-notepad .env   # troque POSTGRES_PASSWORD e RABBITMQ_PASSWORD
+notepad .env   # troque MONGO_PASSWORD e RABBITMQ_PASSWORD
 ```
 
-### 2. Subir PostgreSQL e RabbitMQ
+### 2. Subir MongoDB e RabbitMQ
 
 Com o Docker Desktop aberto:
 
@@ -62,7 +62,7 @@ docker compose ps
 Espere os dois serviços mostrarem `healthy` na coluna **STATUS** (o RabbitMQ leva uns 20 segundos). Para testar:
 
 ```powershell
-docker compose exec postgres psql -U vagas -d vagas -c "select version();"
+docker compose exec mongo mongosh -u vagas -p SUA_SENHA --authenticationDatabase admin --eval "db.adminCommand({ ping: 1 })"
 ```
 
 Painel do RabbitMQ: <http://localhost:15672> (usuário e senha do `.env`). As filas só aparecem depois que o núcleo Java subir pela primeira vez (etapa 2): é ele quem as cria.
@@ -75,9 +75,9 @@ docker compose stop               # parar (os dados ficam)
 docker compose down -v            # apagar TUDO, inclusive os dados
 ```
 
-> **Porta em uso?** Você tem outro Postgres ou RabbitMQ instalado no Windows. Mude `POSTGRES_PORT` (ex.: `5433`) ou `RABBITMQ_PORT` no `.env` e rode `docker compose up -d` de novo.
+> **Porta em uso?** Você tem outro MongoDB ou RabbitMQ instalado no Windows. Mude `MONGO_PORT` (ex.: `27018`) ou `RABBITMQ_PORT` no `.env` e rode `docker compose up -d` de novo.
 >
-> **Trocou a senha do RabbitMQ no `.env` e não loga mais?** A senha só é aplicada na primeira vez que o volume é criado. Rode `docker compose down -v` (apaga os dados locais) e suba de novo.
+> **Trocou a senha do MongoDB ou do RabbitMQ no `.env` e não loga mais?** A senha só é aplicada na primeira vez que o volume é criado. Rode `docker compose down -v` (apaga os dados locais) e suba de novo.
 
 ### 3. Validar o contrato
 
@@ -97,15 +97,15 @@ Confira que o `.env` **não** aparece em `git status` — ele está no `.gitigno
 
 | Workflow | Quando | O que faz |
 |---|---|---|
-| `ci.yml` | Push na `main`, pull requests, manual | Valida contrato e compose, sobe Postgres + RabbitMQ; build/testes do Java e do Python quando existirem |
+| `ci.yml` | Push na `main`, pull requests, manual | Valida contrato e compose, sobe MongoDB + RabbitMQ; build/testes do Java e do Python quando existirem |
 | `coleta.yml` | **Todo dia às 07:47 (Brasília)** e manual | Roda o núcleo em modo de execução única: coleta das fontes via API, filtra, salva e notifica. Não usa RabbitMQ. Até a etapa 2 só registra que não há nada para coletar |
 
 ### Estado entre as coletas
 
-O Postgres do job é descartado no fim de cada execução. Para lembrar das vagas já vistas/notificadas, o workflow salva um dump do banco no **cache do GitHub Actions** e restaura na execução seguinte.
+O MongoDB do job é descartado no fim de cada execução. Para lembrar das vagas já vistas/notificadas, o workflow salva um backup (`mongodump`) no **cache do GitHub Actions** e restaura (`mongorestore`) na execução seguinte.
 
 - O cache expira se ficar **7 dias sem uso** (ex.: coleta parada uma semana). Aí a próxima coleta começa do zero e reenvia as vagas ainda abertas — uma vez só.
-- Para um banco permanente, crie um Postgres gratuito (ex.: Neon ou Supabase) e cadastre os secrets `SPRING_DATASOURCE_URL` (formato `jdbc:postgresql://...`), `SPRING_DATASOURCE_USERNAME` e `SPRING_DATASOURCE_PASSWORD`. Com eles, o cache deixa de ser usado.
+- Para um banco permanente, crie um cluster gratuito no **MongoDB Atlas** (512 MB, suficiente para anos de vagas) e cadastre o secret `MONGODB_URI` (formato `mongodb+srv://usuario:senha@cluster.../vagas`). Com ele, o cache deixa de ser usado. O Atlas pode desativar clusters gratuitos parados por muito tempo; a coleta diária mantém o seu em uso.
 
 ### Secrets
 
@@ -116,7 +116,7 @@ Em **Settings → Secrets and variables → Actions → New repository secret**.
 | `VAGAS_GITHUB_TOKEN` | Etapa 3 — opcional; sem ele usa o token automático do Actions |
 | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`, `CAREERJET_API_KEY` | Etapa 5 |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Etapa 6 |
-| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Opcional (banco permanente) |
+| `MONGODB_URI` | Opcional (banco permanente no MongoDB Atlas) |
 
 > O scraper do LinkedIn (Python) **não** roda no Actions: o LinkedIn costuma bloquear IPs de servidores na nuvem. Ele será agendado no seu computador (etapa 8).
 >
@@ -126,8 +126,8 @@ Em **Settings → Secrets and variables → Actions → New repository secret**.
 
 | # | Etapa | Status |
 |---|---|---|
-| 1 | Monorepo, contrato JSON, Docker Compose com PostgreSQL e RabbitMQ | ✅ |
-| 2 | Núcleo Java: entidade `Vaga`, Flyway, filtro júnior com testes, `IngestaoService`, topologia + consumer do RabbitMQ | |
+| 1 | Monorepo, contrato JSON, Docker Compose com MongoDB e RabbitMQ | ✅ |
+| 2 | Núcleo Java: documento `Vaga` + índices no MongoDB, filtro júnior com testes, `IngestaoService`, topologia + consumer do RabbitMQ | |
 | 3 | Fonte GitHub (Java) | |
 | 4 | Fonte Gupy (Java) | |
 | 5 | Fontes Adzuna e Careerjet (Java) | |

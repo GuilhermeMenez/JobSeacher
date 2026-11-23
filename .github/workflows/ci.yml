@@ -52,20 +52,20 @@ jobs:
 
       - name: Validar docker-compose.yml
         env:
-          POSTGRES_PASSWORD: ci-somente-validacao
+          MONGO_PASSWORD: ci-somente-validacao
           RABBITMQ_PASSWORD: ci-somente-validacao
         run: docker compose config --quiet
 
   # ---------------------------------------------------------------------------
-  # Sobe PostgreSQL + RabbitMQ do compose e espera ficarem healthy
+  # Sobe MongoDB + RabbitMQ do compose e espera ficarem healthy
   # ---------------------------------------------------------------------------
   infraestrutura:
-    name: PostgreSQL + RabbitMQ (docker compose)
+    name: MongoDB + RabbitMQ (docker compose)
     needs: verificacoes
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      POSTGRES_PASSWORD: ci-somente-teste
+      MONGO_PASSWORD: ci-somente-teste
       RABBITMQ_PASSWORD: ci-somente-teste
     steps:
       - uses: actions/checkout@v7
@@ -73,8 +73,11 @@ jobs:
       - name: Subir e aguardar healthcheck
         run: docker compose up -d --wait --wait-timeout 120
 
-      - name: Testar PostgreSQL
-        run: docker compose exec -T postgres psql -U vagas -d vagas -c "select version();"
+      - name: Testar MongoDB (login com o usuário do .env)
+        run: |
+          docker compose exec -T mongo mongosh --quiet \
+            -u vagas -p "$MONGO_PASSWORD" --authenticationDatabase admin \
+            --eval "printjson(db.adminCommand({ buildInfo: 1 }).version)"
 
       - name: Testar RabbitMQ (login com o usuário do .env)
         run: |
